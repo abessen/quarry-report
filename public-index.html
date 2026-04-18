@@ -1,0 +1,729 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Mobile-optimized hourly production report viewer for a RunData-style API." />
+  <title>Hourly Production Report</title>
+  <style>
+    :root {
+      --bg: #f4f4f4;
+      --card: #ffffff;
+      --grid: #4a4a4a;
+      --header: #e9ecef;
+      --green: #dcefd7;
+      --green-strong: #cfe7c7;
+      --text: #111111;
+      --muted: #6b6b6b;
+      --danger: #b42318;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: Arial, Helvetica, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      padding: 12px;
+    }
+
+    .wrap {
+      max-width: 760px;
+      margin: 0 auto;
+    }
+
+    .note {
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid #d0d0d0;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+    }
+
+    .toolbar {
+      padding: 12px 14px;
+      display: grid;
+      gap: 10px;
+      border-bottom: 1px solid #ddd;
+      background: #fafafa;
+    }
+
+    .toolbar-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 10px;
+    }
+
+    .field {
+      display: grid;
+      gap: 4px;
+    }
+
+    .field label {
+      font-size: 12px;
+      color: var(--muted);
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .field input {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid #cfcfcf;
+      border-radius: 10px;
+      font-size: 15px;
+    }
+
+    .actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    button {
+      border: 0;
+      border-radius: 10px;
+      padding: 10px 14px;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+      background: #1f2937;
+      color: white;
+    }
+
+    button.secondary {
+      background: #e5e7eb;
+      color: #111827;
+    }
+
+    button:disabled {
+      opacity: 0.65;
+      cursor: not-allowed;
+    }
+
+    .status {
+      font-size: 13px;
+      color: var(--muted);
+      min-height: 18px;
+    }
+
+    .status.error {
+      color: var(--danger);
+      font-weight: 700;
+    }
+
+    .title {
+      padding: 12px 14px 8px;
+      font-size: 20px;
+      font-weight: 700;
+      line-height: 1.25;
+    }
+
+    .table-wrap {
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      border-top: 1px solid #d9d9d9;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 720px;
+      font-size: 18px;
+    }
+
+    th, td {
+      border: 1px solid var(--grid);
+      padding: 8px 10px;
+      text-align: center;
+      white-space: nowrap;
+    }
+
+    th {
+      background: var(--header);
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      font-weight: 700;
+    }
+
+    td.hour {
+      font-weight: 700;
+      background: #fafafa;
+    }
+
+    td.data {
+      background: var(--green);
+    }
+
+    td.keyprd {
+      background: var(--green-strong);
+      font-weight: 700;
+    }
+
+    tr.total-row td {
+      font-weight: 700;
+      font-size: 19px;
+    }
+
+    .footer {
+      padding: 10px 14px 14px;
+      font-size: 13px;
+      color: #666;
+    }
+
+    @media (max-width: 560px) {
+      body { padding: 8px; }
+      .title { font-size: 18px; }
+      table { font-size: 16px; }
+      th, td { padding: 7px 8px; }
+      button { width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="note">AI can make mistakes.</div>
+
+    <div class="card">
+      <div class="toolbar">
+        <div class="toolbar-grid">
+          <div class="field">
+            <label for="baseUrl">API Host</label>
+            <input id="baseUrl" value="" placeholder="https://your-site.example.com" autocomplete="url" />
+          </div>
+          <div class="field">
+            <label for="reportDate">Report Date</label>
+            <input id="reportDate" type="date" />
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="authToken">Bearer Token (optional)</label>
+          <input id="authToken" type="password" placeholder="Paste token only if your API requires it" autocomplete="off" />
+        </div>
+
+        <div class="actions">
+          <button id="prevBtn" class="secondary" type="button">Previous Day</button>
+          <button id="refreshBtn" type="button">Refresh Report</button>
+          <button id="nextBtn" class="secondary" type="button">Next Day</button>
+          <button id="demoBtn" class="secondary" type="button">Load Demo Data</button>
+        </div>
+
+        <div id="status" class="status">Loading latest report...</div>
+      </div>
+
+      <div id="title" class="title">Loading report...</div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Hour</th>
+              <th>LFC8</th>
+              <th>LC6</th>
+              <th>LC1B</th>
+              <th>LC11C</th>
+              <th>LC17C</th>
+              <th>LC20C</th>
+              <th>KeyPrd</th>
+            </tr>
+          </thead>
+          <tbody id="reportBody"></tbody>
+        </table>
+      </div>
+
+      <div class="footer">Mobile-optimized HTML report wired for a RunData-style API using hourly tons for the configured device IDs. Enter the site root host, for example https://your-site.example.com. The app normalizes either the site root or a pasted /api URL.</div>
+    </div>
+  </div>
+
+  <script>
+    'use strict';
+
+    const HOURS = [
+      '6a','7a','8a','9a','10a','11a','12p','1p','2p','3p','4p','5p',
+      '6p','7p','8p','9p','10p','11p','12a','1a','2a','3a','4a','5a'
+    ];
+
+    const DEVICES = {
+      LFC8: 11,
+      LC6: 7,
+      LC1B: 1,
+      LC11C: 3,
+      LC17C: 17,
+      LC20C: 16,
+      KeyPrd: 1002
+    };
+
+    const AUTO_REFRESH_MS = 5 * 60 * 1000;
+    const REPORT_TIMEZONE = 'America/New_York';
+
+    const demoRows = [
+      ['6a', 633, 412, 121, 188, 244, 178, 422],
+      ['7a', 662, 438, 146, 203, 251, 188, 439],
+      ['8a', 866, 521, 173, 245, 309, 214, 581],
+      ['9a', 898, 547, 181, 251, 318, 226, 603],
+      ['10a', 902, 539, 177, 248, 311, 221, 597],
+      ['11a', 886, 528, 171, 239, 302, 217, 577],
+      ['12p', 799, 497, 166, 228, 281, 204, 520],
+      ['1p', 875, 544, 178, 247, 314, 223, 587],
+      ['2p', 852, 531, 174, 242, 308, 219, 576],
+      ['3p', 847, 526, 172, 238, 304, 216, 566],
+      ['4p', 0, 0, 0, 0, 7, 7, 14],
+      ['5p', 0, 0, 0, 0, 0, 0, 0],
+      ['6p', 0, 0, 0, 0, 0, 0, 0],
+      ['7p', null, null, null, null, null, null, null],
+      ['8p', 254, 153, 49, 71, 89, 66, 123],
+      ['9p', 809, 487, 161, 233, 292, 210, 543],
+      ['10p', 647, 392, 131, 179, 223, 164, 406],
+      ['11p', 349, 211, 70, 96, 119, 89, 214],
+      ['12a', 893, 536, 178, 243, 306, 228, 548],
+      ['1a', 936, 562, 186, 257, 323, 238, 623],
+      ['2a', 938, 559, 184, 255, 319, 236, 600],
+      ['3a', 844, 506, 168, 232, 291, 214, 592],
+      ['4a', 783, 471, 157, 216, 274, 206, 576],
+      ['5a', 882, 530, 176, 244, 308, 229, 608]
+    ];
+
+    let activeController = null;
+    let isLoading = false;
+
+    function fmt(v) {
+      if (v === null || v === undefined) return '—';
+      return Number(v).toLocaleString('en-US');
+    }
+
+    function setStatus(message, isError = false) {
+      const el = document.getElementById('status');
+      el.textContent = message;
+      el.className = isError ? 'status error' : 'status';
+    }
+
+    function formatDisplayDate(dateStr) {
+      const [year, month, day] = dateStr.split('-').map(Number);
+      return `${month}/${day}/${year}`;
+    }
+
+    function formatTitle(dateStr) {
+      const nextDateStr = addDaysToDateString(dateStr, 1);
+      return `${formatDisplayDate(dateStr)} 6:00:00 AM ET – ${formatDisplayDate(nextDateStr)} 5:59:00 AM ET`;
+    }
+
+    function renderRows(rows) {
+      const body = document.getElementById('reportBody');
+      body.innerHTML = '';
+
+      const totals = {
+        LFC8: 0,
+        LC6: 0,
+        LC1B: 0,
+        LC11C: 0,
+        LC17C: 0,
+        LC20C: 0,
+        KeyPrd: 0
+      };
+
+      rows.forEach(([hour, lfc8, lc6, lc1b, lc11c, lc17c, lc20c, keyprd]) => {
+        const tr = document.createElement('tr');
+
+        if (lfc8 !== null) totals.LFC8 += Number(lfc8 || 0);
+        if (lc6 !== null) totals.LC6 += Number(lc6 || 0);
+        if (lc1b !== null) totals.LC1B += Number(lc1b || 0);
+        if (lc11c !== null) totals.LC11C += Number(lc11c || 0);
+        if (lc17c !== null) totals.LC17C += Number(lc17c || 0);
+        if (lc20c !== null) totals.LC20C += Number(lc20c || 0);
+        if (keyprd !== null) totals.KeyPrd += Number(keyprd || 0);
+
+        tr.innerHTML = `
+          <td class="hour">${hour}</td>
+          <td class="data">${fmt(lfc8)}</td>
+          <td class="data">${fmt(lc6)}</td>
+          <td class="data">${fmt(lc1b)}</td>
+          <td class="data">${fmt(lc11c)}</td>
+          <td class="data">${fmt(lc17c)}</td>
+          <td class="data">${fmt(lc20c)}</td>
+          <td class="keyprd">${fmt(keyprd)}</td>
+        `;
+        body.appendChild(tr);
+      });
+
+      const totalRow = document.createElement('tr');
+      totalRow.className = 'total-row';
+      totalRow.innerHTML = `
+        <td class="hour">Total</td>
+        <td class="data">${fmt(totals.LFC8)}</td>
+        <td class="data">${fmt(totals.LC6)}</td>
+        <td class="data">${fmt(totals.LC1B)}</td>
+        <td class="data">${fmt(totals.LC11C)}</td>
+        <td class="data">${fmt(totals.LC17C)}</td>
+        <td class="data">${fmt(totals.LC20C)}</td>
+        <td class="keyprd">${fmt(totals.KeyPrd)}</td>
+      `;
+      body.appendChild(totalRow);
+    }
+
+    function toHourLabel(date) {
+      let hour = date.getHours();
+      const suffix = hour >= 12 ? 'p' : 'a';
+      hour = hour % 12;
+      if (hour === 0) hour = 12;
+      return `${hour}${suffix}`;
+    }
+
+    function getPointTimestamp(point) {
+      return point.timestamp || point.time || point.dateTime || point.DateTime || point.StartTime || point.start;
+    }
+
+    function getPointValue(point) {
+      const raw = point.value ?? point.Value ?? point.tons ?? point.Tons ?? point.total ?? point.Total ?? 0;
+      return Number(raw) || 0;
+    }
+
+    function groupHourly(series) {
+      const hourly = new Map();
+      HOURS.forEach((h) => hourly.set(h, 0));
+
+      for (const point of series) {
+        const timestamp = getPointTimestamp(point);
+        if (!timestamp) continue;
+
+        const ts = new Date(timestamp);
+        if (Number.isNaN(ts.getTime())) continue;
+
+        const label = toHourLabel(ts);
+        hourly.set(label, (hourly.get(label) || 0) + getPointValue(point));
+      }
+
+      return hourly;
+    }
+
+    function normalizeBaseUrl(baseUrl) {
+      const trimmed = (baseUrl || '').trim();
+      if (!trimmed) {
+        throw new Error('Enter your site host, for example https://your-site.example.com');
+      }
+
+      let parsed;
+      try {
+        parsed = new URL(trimmed);
+      } catch (err) {
+        throw new Error('API Host must be a full URL, for example https://your-site.example.com');
+      }
+
+      const cleanPath = parsed.pathname.replace(/\/+$/, '');
+      if (cleanPath.toLowerCase() === '/api') {
+        parsed.pathname = '';
+      }
+      parsed.search = '';
+      parsed.hash = '';
+      return parsed.toString().replace(/\/$/, '');
+    }
+
+    function parseDateInput(dateStr) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr || '')) {
+        throw new Error('Report Date must be a valid date in YYYY-MM-DD format.');
+      }
+
+      const [year, month, day] = dateStr.split('-').map(Number);
+      const date = new Date(year, month - 1, day);
+      if (
+        Number.isNaN(date.getTime()) ||
+        date.getFullYear() !== year ||
+        date.getMonth() !== month - 1 ||
+        date.getDate() !== day
+      ) {
+        throw new Error('Report Date is invalid.');
+      }
+
+      return { year, month, day };
+    }
+
+    function addDaysToDateString(dateStr, days) {
+      const { year, month, day } = parseDateInput(dateStr);
+      const date = new Date(year, month - 1, day);
+      date.setDate(date.getDate() + days);
+      const y = date.getFullYear();
+      const m = String(date.getMonth() + 1).padStart(2, '0');
+      const d = String(date.getDate()).padStart(2, '0');
+      return `${y}-${m}-${d}`;
+    }
+
+    function getEasternOffset(dateStr) {
+      const noonUtc = new Date(`${dateStr}T12:00:00Z`);
+      const easternAtNoon = new Intl.DateTimeFormat('en-US', {
+        timeZone: REPORT_TIMEZONE,
+        hour: '2-digit',
+        hour12: false,
+        minute: '2-digit'
+      }).formatToParts(noonUtc);
+
+      const hourPart = easternAtNoon.find((part) => part.type === 'hour');
+      const minutePart = easternAtNoon.find((part) => part.type === 'minute');
+      const easternHour = Number(hourPart?.value ?? '0');
+      const easternMinute = Number(minutePart?.value ?? '0');
+      const offsetMinutes = (easternHour * 60 + easternMinute) - 12 * 60;
+      const sign = offsetMinutes >= 0 ? '+' : '-';
+      const absolute = Math.abs(offsetMinutes);
+      const hh = String(Math.floor(absolute / 60)).padStart(2, '0');
+      const mm = String(absolute % 60).padStart(2, '0');
+      return `${sign}${hh}:${mm}`;
+    }
+
+    async function fetchRunData(baseUrl, startIso, endIso, signal) {
+      const normalizedBaseUrl = normalizeBaseUrl(baseUrl);
+      const url = new URL('/api/RunData', normalizedBaseUrl + '/');
+      url.searchParams.set('start', startIso);
+      url.searchParams.set('end', endIso);
+      url.searchParams.set('deviceIds', Object.values(DEVICES).join(','));
+      url.searchParams.set('interval', 'Hourly');
+      url.searchParams.set('dataType', 'Tons');
+
+      const token = document.getElementById('authToken').value.trim();
+      const headers = {};
+      if (token) {
+        headers.Authorization = `Bearer ${token}`;
+      }
+
+      let res;
+      try {
+        res = await fetch(url.toString(), {
+          method: 'GET',
+          headers,
+          credentials: 'include',
+          signal
+        });
+      } catch (err) {
+        if (err.name === 'AbortError') {
+          throw err;
+        }
+        throw new Error('Network fetch failed. Check API Host, VPN/network access, HTTPS, CORS, and auth requirements.');
+      }
+
+      if (!res.ok) {
+        if (res.status === 401 || res.status === 403) {
+          throw new Error(`RunData request failed (${res.status}). Add a valid bearer token or use your authenticated QuarryVision site.`);
+        }
+        if (res.status === 404) {
+          throw new Error('RunData endpoint not found (404). Try the site root host like https://olen1.quarryvision.com instead of an /api route, or verify the RunData path on your server.');
+        }
+        throw new Error(`RunData request failed (${res.status})`);
+      }
+      return res.json();
+    }
+
+    function normalizeSeriesPayload(payload) {
+      if (Array.isArray(payload)) return payload;
+      if (Array.isArray(payload.data)) return payload.data;
+      if (Array.isArray(payload.items)) return payload.items;
+      if (Array.isArray(payload.results)) return payload.results;
+      return [];
+    }
+
+    function getPointDeviceId(point) {
+      return Number(point.deviceId ?? point.DeviceId ?? point.id ?? point.Id ?? point.deviceID);
+    }
+
+    function setButtonsDisabled(disabled) {
+      document.getElementById('prevBtn').disabled = disabled;
+      document.getElementById('refreshBtn').disabled = disabled;
+      document.getElementById('nextBtn').disabled = disabled;
+    }
+
+    async function loadLive(dateOverride = null, options = {}) {
+      const { silentAbort = false } = options;
+      const baseUrl = document.getElementById('baseUrl').value.trim();
+      const reportDate = dateOverride || document.getElementById('reportDate').value;
+      parseDateInput(reportDate);
+
+      if (activeController) {
+        activeController.abort();
+      }
+      activeController = new AbortController();
+      const controller = activeController;
+
+      const offset = getEasternOffset(reportDate);
+      const nextDateStr = addDaysToDateString(reportDate, 1);
+      const startIso = `${reportDate}T06:00:00${offset}`;
+      const endIso = `${nextDateStr}T05:59:00${offset}`;
+
+      document.getElementById('reportDate').value = reportDate;
+      document.getElementById('title').textContent = formatTitle(reportDate);
+      setStatus('Loading live report...');
+      isLoading = true;
+      setButtonsDisabled(true);
+
+      try {
+        const payload = await fetchRunData(baseUrl, startIso, endIso, controller.signal);
+        const series = normalizeSeriesPayload(payload);
+        const byDevice = new Map();
+
+        for (const point of series) {
+          const deviceId = getPointDeviceId(point);
+          if (!Number.isFinite(deviceId)) continue;
+          if (!byDevice.has(deviceId)) byDevice.set(deviceId, []);
+          byDevice.get(deviceId).push(point);
+        }
+
+        const grouped = {};
+        Object.entries(DEVICES).forEach(([name, id]) => {
+          grouped[name] = groupHourly(byDevice.get(id) || []);
+        });
+
+        const rows = HOURS.map((hour) => [
+          hour,
+          grouped.LFC8.get(hour) ?? 0,
+          grouped.LC6.get(hour) ?? 0,
+          grouped.LC1B.get(hour) ?? 0,
+          grouped.LC11C.get(hour) ?? 0,
+          grouped.LC17C.get(hour) ?? 0,
+          grouped.LC20C.get(hour) ?? 0,
+          grouped.KeyPrd.get(hour) ?? 0
+        ]);
+
+        renderRows(rows);
+        const now = new Date();
+        setStatus(`Live report loaded. Last updated ${now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}.`);
+      } catch (err) {
+        if (err.name === 'AbortError') {
+          if (!silentAbort) {
+            setStatus('Reloading report...');
+          }
+          return;
+        }
+        setStatus(err.message || 'Unable to load live data.', true);
+      } finally {
+        if (activeController === controller) {
+          activeController = null;
+        }
+        isLoading = false;
+        setButtonsDisabled(false);
+      }
+    }
+
+    function shiftReportDate(days) {
+      const input = document.getElementById('reportDate');
+      const currentValue = input.value;
+      const nextValue = addDaysToDateString(currentValue, days);
+      input.value = nextValue;
+      loadLive(nextValue, { silentAbort: true }).catch((err) => {
+        setStatus(err.message || 'Unable to shift report date.', true);
+      });
+    }
+
+    function getCurrentDateInTimeZone(timeZone) {
+      const parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false
+      }).formatToParts(new Date());
+
+      const year = parts.find((part) => part.type === 'year')?.value;
+      const month = parts.find((part) => part.type === 'month')?.value;
+      const day = parts.find((part) => part.type === 'day')?.value;
+      const hour = Number(parts.find((part) => part.type === 'hour')?.value ?? '0');
+
+      return {
+        date: `${year}-${month}-${day}`,
+        hour
+      };
+    }
+
+    function getDefaultReportDate() {
+      const easternNow = getCurrentDateInTimeZone(REPORT_TIMEZONE);
+      if (easternNow.hour < 6) {
+        return addDaysToDateString(easternNow.date, -1);
+      }
+      return easternNow.date;
+    }
+
+    function runSelfTests() {
+      console.assert(typeof shiftReportDate === 'function', 'shiftReportDate should be globally defined');
+      console.assert(formatTitle('2026-04-15') === '4/15/2026 6:00:00 AM ET – 4/16/2026 5:59:00 AM ET', 'formatTitle should render the scheduled day window');
+      console.assert(toHourLabel(new Date('2026-04-17T06:00:00')) === '6a', '6:00 should map to 6a');
+      console.assert(toHourLabel(new Date('2026-04-17T12:00:00')) === '12p', '12:00 should map to 12p');
+      console.assert(toHourLabel(new Date('2026-04-18T00:00:00')) === '12a', 'midnight should map to 12a');
+      console.assert(addDaysToDateString('2026-04-15', 1) === '2026-04-16', 'addDaysToDateString should increment calendar dates');
+      console.assert(getEasternOffset('2026-01-15') === '-05:00', 'January should use Eastern Standard Time');
+      console.assert(getEasternOffset('2026-07-15') === '-04:00', 'July should use Eastern Daylight Time');
+
+      const grouped = groupHourly([
+        { timestamp: '2026-04-17T06:15:00-04:00', value: 100 },
+        { timestamp: '2026-04-17T06:45:00-04:00', value: 50 },
+        { timestamp: '2026-04-17T07:05:00-04:00', value: 25 }
+      ]);
+      console.assert(grouped.get('6a') === 150, 'groupHourly should sum values within the same hour');
+      console.assert(grouped.get('7a') === 25, 'groupHourly should track the next hour separately');
+
+      const arrayPayload = normalizeSeriesPayload([{ deviceId: 11, timestamp: '2026-04-17T06:00:00-04:00', value: 1 }]);
+      console.assert(Array.isArray(arrayPayload) && arrayPayload.length === 1, 'normalizeSeriesPayload should accept arrays');
+      const nestedPayload = normalizeSeriesPayload({ data: [{ deviceId: 11, timestamp: '2026-04-17T06:00:00-04:00', value: 2 }] });
+      console.assert(Array.isArray(nestedPayload) && nestedPayload.length === 1, 'normalizeSeriesPayload should accept payload.data');
+      console.assert(getPointDeviceId({ DeviceId: '11' }) === 11, 'getPointDeviceId should normalize device identifiers');
+      console.assert(normalizeBaseUrl('https://your-site.example.com/api') === 'https://your-site.example.com', 'normalizeBaseUrl should strip a pasted /api suffix');
+      console.assert(normalizeBaseUrl('https://your-site.example.com') === 'https://your-site.example.com', 'normalizeBaseUrl should preserve a root host');
+    }
+
+    document.getElementById('refreshBtn').addEventListener('click', () => {
+      if (!isLoading) {
+        loadLive(null, { silentAbort: true }).catch((err) => {
+          setStatus(err.message || 'Unable to refresh report.', true);
+        });
+      }
+    });
+    document.getElementById('prevBtn').addEventListener('click', () => shiftReportDate(-1));
+    document.getElementById('nextBtn').addEventListener('click', () => shiftReportDate(1));
+    document.getElementById('demoBtn').addEventListener('click', () => {
+      if (activeController) {
+        activeController.abort();
+        activeController = null;
+      }
+      document.getElementById('title').textContent = '4/15/2026 6:00:00 AM ET – 4/16/2026 5:59:00 AM ET';
+      document.getElementById('reportDate').value = '2026-04-15';
+      renderRows(demoRows);
+      setStatus('Demo data loaded.');
+    });
+    document.getElementById('reportDate').addEventListener('change', (event) => {
+      loadLive(event.target.value, { silentAbort: true }).catch((err) => {
+        setStatus(err.message || 'Unable to load selected date.', true);
+      });
+    });
+
+    document.getElementById('baseUrl').addEventListener('change', () => {
+      loadLive(null, { silentAbort: true }).catch((err) => {
+        setStatus(err.message || 'Unable to load updated host.', true);
+      });
+    });
+    document.getElementById('authToken').addEventListener('change', () => {
+      loadLive(null, { silentAbort: true }).catch((err) => {
+        setStatus(err.message || 'Unable to load with updated token.', true);
+      });
+    });
+
+    document.getElementById('reportDate').value = getDefaultReportDate();
+    runSelfTests();
+    renderRows(demoRows);
+    loadLive(getDefaultReportDate(), { silentAbort: true }).catch((err) => {
+      setStatus(err.message || 'Unable to load initial report.', true);
+    });
+    setInterval(() => {
+      if (!isLoading) {
+        loadLive(null, { silentAbort: true }).catch((err) => {
+          setStatus(err.message || 'Auto-refresh failed.', true);
+        });
+      }
+    }, AUTO_REFRESH_MS);
+  </script>
+</body>
+</html>
